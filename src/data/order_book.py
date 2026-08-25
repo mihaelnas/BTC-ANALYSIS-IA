@@ -56,7 +56,7 @@ class OrderBook:
         if not self._bids:
             return None
         # Bids stored with negated keys, so first key is the highest price
-        neg_price = self._bids.keys()[0]
+        neg_price = list(self._bids.keys())[0]
         return -neg_price, self._bids[neg_price]
 
     @property
@@ -64,7 +64,7 @@ class OrderBook:
         """Best ask (price, quantity) or None if empty."""
         if not self._asks:
             return None
-        price = self._asks.keys()[0]
+        price = list(self._asks.keys())[0]
         return price, self._asks[price]
 
     @property
@@ -199,7 +199,7 @@ class OrderBook:
         result: dict[str, Any] = {"timestamp": now}
 
         # Extract bids (already sorted descending via negated keys)
-        bid_keys = self._bids.keys()[:n_levels]
+        bid_keys = list(self._bids.keys())[:n_levels]
         for i, neg_price in enumerate(bid_keys, 1):
             result[f"bid_price_{i}"] = -neg_price
             result[f"bid_qty_{i}"] = self._bids[neg_price]
@@ -210,7 +210,7 @@ class OrderBook:
             result[f"bid_qty_{i}"] = float("nan")
 
         # Extract asks (already sorted ascending)
-        ask_keys = self._asks.keys()[:n_levels]
+        ask_keys = list(self._asks.keys())[:n_levels]
         for i, price in enumerate(ask_keys, 1):
             result[f"ask_price_{i}"] = price
             result[f"ask_qty_{i}"] = self._asks[price]
