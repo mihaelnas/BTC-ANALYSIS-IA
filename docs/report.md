@@ -163,7 +163,41 @@ Comparaison des modèles via tests appariés sur les folds walk-forward.
 
 ## 7. Résultats
 
-*Section à compléter après entraînement et évaluation.*
+### Résumé Walk-Forward (LightGBM)
+
+```text
+fold  n_train  n_test  log_loss  brier_score  accuracy  f1_macro  f1_weighted  f1_DOWN  f1_NEUTRAL    f1_UP
+   0  75404.0 18851.0  1.225633     0.730115  0.414302  0.409528     0.407174 0.455528      0.3096 0.463456
+MEAN  75404.0 18851.0  1.225633     0.730115  0.414302  0.409528     0.407174 0.455528      0.3096 0.463456
+ STD      NaN     NaN       NaN          NaN       NaN       NaN          NaN      NaN         NaN      NaN
+```
+
+### Top Features (Gain)
+
+```text
+             feature   importance  importance_pct
+           return_50 31131.638596       10.090269
+              spread 28972.718808        9.390528
+            vwap_bid 27128.811550        8.792888
+     relative_spread 26025.707287        8.435354
+   spread_volatility 23743.306619        7.695591
+            return_1 21154.051736        6.856371
+            vwap_ask 17102.512298        5.543201
+               obi_3 15914.743813        5.158226
+microprice_deviation 15607.502337        5.058644
+           depth_ask 14846.180532        4.811888
+               obi_5 11826.007154        3.833001
+           return_10  9699.134987        3.143647
+       book_pressure  8919.894397        2.891082
+            return_5  8642.265474        2.801098
+         depth_total  7739.017917        2.508341
+           depth_bid  7438.448927        2.410922
+        obi_weighted  6883.066465        2.230913
+               ofi_3  5931.634794        1.922539
+               obi_1  4920.252206        1.594733
+               ofi_5  3527.499623        1.143320
+```
+
 
 ---
 

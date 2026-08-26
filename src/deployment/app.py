@@ -50,7 +50,7 @@ def predict_from_csv(file_obj) -> tuple[str, plt.Figure | None, str]:
     """
     model = load_model()
     if model is None:
-        return "⚠️ No trained model found. Please train a model first.", None, ""
+        return "No trained model found. Please train a model first.", None, ""
 
     # Load data
     if file_obj is None:
@@ -172,13 +172,13 @@ def build_app() -> gr.Blocks:
     ) as app:
         gr.Markdown(
             """
-            # 📊 LOB Predictor — BTCUSDT Order Book
+            # LOB Predictor — BTCUSDT Order Book
 
             **Prédiction probabiliste du mouvement de prix à court terme
             à partir de la microstructure du carnet d'ordres**
 
-            Ce modèle estime la probabilité d'un mouvement haussier (UP ↑),
-            baissier (DOWN ↓) ou neutre (NEUTRAL →) dans les 5 prochaines secondes,
+            Ce modèle estime la probabilité d'un mouvement haussier (UP),
+            baissier (DOWN) ou neutre (NEUTRAL) dans les 5 prochaines secondes,
             à partir de snapshots du carnet d'ordres.
 
             ---
@@ -186,7 +186,7 @@ def build_app() -> gr.Blocks:
         )
 
         with gr.Tabs():
-            with gr.Tab("🔮 Prédiction"):
+            with gr.Tab("Prédiction"):
                 gr.Markdown("### Téléchargez un fichier de données ou lancez la démo")
 
                 with gr.Row():
@@ -194,9 +194,9 @@ def build_app() -> gr.Blocks:
                         label="Données order book (CSV ou Parquet)",
                         file_types=[".csv", ".parquet"],
                     )
-                    demo_btn = gr.Button("🎲 Lancer la démo", variant="secondary")
+                    demo_btn = gr.Button("Lancer la démo", variant="secondary")
 
-                predict_btn = gr.Button("🚀 Prédire", variant="primary")
+                predict_btn = gr.Button("Prédire", variant="primary")
 
                 with gr.Row():
                     summary_output = gr.Markdown(label="Résumé")
@@ -215,7 +215,7 @@ def build_app() -> gr.Blocks:
                     outputs=[summary_output, plot_output, stats_output],
                 )
 
-            with gr.Tab("📖 Model Card"):
+            with gr.Tab("Model Card"):
                 gr.Markdown(
                     """
                     ## Model Card
@@ -236,7 +236,7 @@ def build_app() -> gr.Blocks:
                     - Volatilité du spread
 
                     ### Limites
-                    - ⚠️ Ce modèle n'est PAS un système de trading
+                    - Ce modèle n'est PAS un système de trading
                     - Les coûts de transaction, la latence et le slippage ne sont pas modélisés
                     - Performance évaluée sur BTCUSDT uniquement (pas de garantie de généralisation)
                     - Le modèle peut subir une dégradation de performance en cas de changement

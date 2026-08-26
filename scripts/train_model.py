@@ -85,12 +85,12 @@ def main() -> None:
             logger.info("running_feature_pipeline")
             df, _ = run_feature_pipeline()
     except FileNotFoundError as exc:
-        print("\n⚠️  Aucun fichier de données pour l'entraînement n'a été trouvé.")
+        print("\nAucun fichier de données pour l'entraînement n'a été trouvé.")
         print("Lance d'abord la collecte avec : python scripts/collect_data.py --duration 60")
         print("Ensuite, relance : python scripts/train_model.py")
         return
     except Exception as exc:  # pragma: no cover - keep CLI user-friendly for bad data
-        print("\n⚠️  Les données de collecte sont absentes ou incomplètes pour l'entraînement.")
+        print("\nLes données de collecte sont absentes ou incomplètes pour l'entraînement.")
         print("Relancez d'abord la collecte, puis réessayez l'entraînement.")
         logger.warning("training_data_unavailable", error=str(exc))
         return
@@ -103,7 +103,7 @@ def main() -> None:
     logger.info("dataset_loaded", rows=len(df), columns=len(df.columns))
 
     if len(df) < 10000:
-        print("\n⚠️  Données insuffisantes pour l'entraînement.")
+        print("\nDonnées insuffisantes pour l'entraînement.")
         print(f"Seulement {len(df)} lignes disponibles, alors qu'il faut au moins 10 000 lignes valides.")
         print("Collectez plus longtemps avant de relancer le script d'entraînement.")
         return

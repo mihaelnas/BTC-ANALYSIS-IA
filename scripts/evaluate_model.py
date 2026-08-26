@@ -80,7 +80,7 @@ def main() -> None:
 
     if not data_path.exists():
         logger.error("data_not_found", path=str(data_path))
-        print("❌ No processed data found. Run the feature pipeline first:")
+        print("No processed data found. Run the feature pipeline first:")
         print("   python scripts/train_model.py")
         sys.exit(1)
 
@@ -99,7 +99,7 @@ def main() -> None:
 
     if not model_path.exists():
         logger.error("model_not_found", path=str(model_path))
-        print("❌ No trained model found. Train a model first:")
+        print("No trained model found. Train a model first:")
         print("   python scripts/train_model.py")
         sys.exit(1)
 
@@ -201,7 +201,7 @@ def main() -> None:
         plot_confusion_matrix(results[-1], save_path=output_dir / "confusion_matrix.png")
         plot_calibration(results[-1], save_path=output_dir / "calibration.png")
 
-        print(f"\n📊 Plots saved to {output_dir}")
+        print(f"\nPlots saved to {output_dir}")
 
     # ─── Feature importance ───────────────────────────────────────────
     importance = model.feature_importance()
@@ -259,13 +259,13 @@ if __name__ == "__main__":
 
         # Specific helpful hints for common failure modes
         if "feature_importances" in msg or "No feature_importances" in msg:
-            print("❌ Erreur : le modèle chargé semble incomplet ou non-fitté.")
+            print("Erreur : le modèle chargé semble incomplet ou non-fitté.")
             print("   Solution : ré-entrainez un modèle avec `python scripts/train_model.py` ou fournissez un chemin de modèle valide via --model-path.")
         elif "No processed data found" in msg or "data_not_found" in msg:
-            print("❌ Données traitées introuvables. Exécutez d'abord le pipeline de features :")
+            print("Données traitées introuvables. Exécutez d'abord le pipeline de features :")
             print("   python scripts/train_model.py")
         else:
-            print("❌ Erreur lors de l'évaluation :", msg)
+            print("Erreur lors de l'évaluation :", msg)
 
         # Log full exception for debugging purposes
         logger.error("evaluation_failed", error=msg)
