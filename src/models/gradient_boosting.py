@@ -138,7 +138,35 @@ class LightGBMModel:
         if self._model is None:
             raise RuntimeError("Model not fitted.")
 
-        importance = self._model.feature_importances_
+        # Try the sklearn wrapper's attribute first
+        try:
+            importance = getattr(self._model, "feature_importances_")
+            if importance is None:
+                raise AttributeError
+        except Exception:
+            # Fallback: if we have a Booster (loaded from file), use its API
+            booster = None
+            # lightgbm Booster may be stored under different attributes
+            booster = getattr(self._model, "_Booster", None) or getattr(self._model, "booster_", None)
+            if booster is None and hasattr(self, "_model"):
+                # In case the model was loaded into a separate variable
+                booster = getattr(self, "_model", None)
+
+            if booster is None:
+                raise RuntimeError("Model does not expose feature importances. Ensure it is fitted or loaded correctly.")
+
+            try:
+                importance = booster.feature_importance(importance_type=importance_type)
+            except Exception:
+                # Last resort: try Booster's get_score
+                try:
+                    score = booster.get_score(importance_type=importance_type)
+                    # Map scores to list with zeros for missing features
+                    names = self._feature_names or sorted(score.keys())
+                    importance = [score.get(n, 0) for n in names]
+                except Exception as exc:
+                    raise RuntimeError("Unable to extract feature importances from loaded Booster") from exc
+
         names = self._feature_names or [f"f_{i}" for i in range(len(importance))]
 
         df = pd.DataFrame({
@@ -331,6 +359,61 @@ def train_and_evaluate_lgbm(
         test_window_hours=test_window_hours,
         step_hours=step_hours,
     )
+
+    # Auto-adapt windows when no splits are found: progressively shrink windows
+    if not splits:
+        t_span_hours = (timestamps[-1] - timestamps[0]) / 3600.0
+        logger.info("no_splits_attempting_auto_adjust", data_span_hours=t_span_hours,
+                    train_window_hours=train_window_hours,
+                    test_window_hours=test_window_hours,
+                    step_hours=step_hours)
+
+        # If data span is smaller than requested total window, scale down proportionally
+        total_requested = float(train_window_hours + test_window_hours)
+        if total_requested <= 0:
+            raise ValueError("Invalid train/test window configuration")
+
+        # Compute a scaling factor so train+test <= data span (leave small margin)
+        scale = min(1.0, max(0.0, (t_span_hours - 0.001) / total_requested))
+
+        # Start with proportional reduction, then iteratively reduce until splits found
+        min_train_hours = 0.01  # 36 seconds minimum window to avoid zero
+        attempt = 0
+        max_attempts = 10
+        cur_train = float(train_window_hours) * max(scale, 1e-6)
+        cur_test = float(test_window_hours) * max(scale, 1e-6)
+        cur_step = float(step_hours) * max(scale, 1e-6)
+
+        while attempt < max_attempts:
+            # Ensure reasonable minimums
+            if cur_train < min_train_hours or cur_test < 0.01:
+                break
+
+            splits = walk_forward_split(
+                timestamps,
+                train_window_hours=cur_train,
+                test_window_hours=cur_test,
+                step_hours=max(0.01, cur_step),
+            )
+            if splits:
+                logger.info("auto_adjust_success", attempt=attempt,
+                            train_window_hours=cur_train,
+                            test_window_hours=cur_test,
+                            step_hours=cur_step,
+                            n_splits=len(splits))
+                break
+
+            # Reduce windows further (halve)
+            cur_train /= 2.0
+            cur_test /= 2.0
+            cur_step = max(0.01, cur_step / 2.0)
+            attempt += 1
+
+        if not splits:
+            raise ValueError(
+                f"No valid walk-forward splits after auto-adjust. Data span={t_span_hours:.3f}h; "
+                f"tried down to train={cur_train:.4f}h test={cur_test:.4f}h"
+            )
 
     results = []
     for fold_idx, (train_idx, test_idx) in enumerate(splits):

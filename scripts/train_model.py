@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=None)
     parser.add_argument("--n-estimators", type=int, default=None)
     parser.add_argument("--max-depth", type=int, default=None)
+    parser.add_argument("--train-window-hours", type=float, default=None,
+                        help="Training window size in hours (overrides settings)")
+    parser.add_argument("--test-window-hours", type=float, default=None,
+                        help="Test window size in hours (overrides settings)")
+    parser.add_argument("--step-hours", type=float, default=None,
+                        help="Step size in hours for walk-forward (overrides settings)")
     return parser.parse_args()
 
 
@@ -71,12 +77,23 @@ def main() -> None:
     # ─── Load or compute features ──────────────────────────────────────
     features_path = PROCESSED_DATA_DIR / "features_labeled.parquet"
 
-    if features_path.exists():
-        logger.info("loading_existing_features", path=str(features_path))
-        df = pd.read_parquet(features_path)
-    else:
-        logger.info("running_feature_pipeline")
-        df, _ = run_feature_pipeline()
+    try:
+        if features_path.exists():
+            logger.info("loading_existing_features", path=str(features_path))
+            df = pd.read_parquet(features_path)
+        else:
+            logger.info("running_feature_pipeline")
+            df, _ = run_feature_pipeline()
+    except FileNotFoundError as exc:
+        print("\n⚠️  Aucun fichier de données pour l'entraînement n'a été trouvé.")
+        print("Lance d'abord la collecte avec : python scripts/collect_data.py --duration 60")
+        print("Ensuite, relance : python scripts/train_model.py")
+        return
+    except Exception as exc:  # pragma: no cover - keep CLI user-friendly for bad data
+        print("\n⚠️  Les données de collecte sont absentes ou incomplètes pour l'entraînement.")
+        print("Relancez d'abord la collecte, puis réessayez l'entraînement.")
+        logger.warning("training_data_unavailable", error=str(exc))
+        return
 
     if args.sample_size and len(df) > args.sample_size:
         # Take LAST N samples (preserves temporal order)
@@ -84,6 +101,12 @@ def main() -> None:
         logger.info("dataset_sampled", size=len(df))
 
     logger.info("dataset_loaded", rows=len(df), columns=len(df.columns))
+
+    if len(df) < 10000:
+        print("\n⚠️  Données insuffisantes pour l'entraînement.")
+        print(f"Seulement {len(df)} lignes disponibles, alors qu'il faut au moins 10 000 lignes valides.")
+        print("Collectez plus longtemps avant de relancer le script d'entraînement.")
+        return
 
     # ─── Prepare X, y ──────────────────────────────────────────────────
     exclude_cols = {"timestamp", "mid_price", "microprice", "label", "future_return"}
@@ -140,9 +163,20 @@ def main() -> None:
     # ─── Train + Evaluate ──────────────────────────────────────────────
     logger.info("training_lgbm", params=best_params or "defaults")
 
+    # Determine train/test/step windows (CLI args take precedence, then env/settings)
+    from config.settings import get_settings
+    settings = get_settings()
+
+    train_w = args.train_window_hours if args.train_window_hours is not None else settings.model.train_window_hours
+    test_w = args.test_window_hours if args.test_window_hours is not None else settings.model.test_window_hours
+    step_w = args.step_hours if args.step_hours is not None else settings.model.step_hours
+
     final_model, results, summary = train_and_evaluate_lgbm(
         X, y, timestamps,
         params=best_params if best_params else None,
+        train_window_hours=train_w,
+        test_window_hours=test_w,
+        step_hours=step_w,
     )
 
     print("\n" + "=" * 80)

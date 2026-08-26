@@ -251,4 +251,23 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # Provide user-friendly error messages while logging details
+        msg = str(e) or "An unexpected error occurred."
+
+        # Specific helpful hints for common failure modes
+        if "feature_importances" in msg or "No feature_importances" in msg:
+            print("❌ Erreur : le modèle chargé semble incomplet ou non-fitté.")
+            print("   Solution : ré-entrainez un modèle avec `python scripts/train_model.py` ou fournissez un chemin de modèle valide via --model-path.")
+        elif "No processed data found" in msg or "data_not_found" in msg:
+            print("❌ Données traitées introuvables. Exécutez d'abord le pipeline de features :")
+            print("   python scripts/train_model.py")
+        else:
+            print("❌ Erreur lors de l'évaluation :", msg)
+
+        # Log full exception for debugging purposes
+        logger.error("evaluation_failed", error=msg)
+        # Exit with non-zero code but without printing raw traceback
+        sys.exit(1)

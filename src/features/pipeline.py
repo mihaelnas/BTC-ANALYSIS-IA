@@ -46,10 +46,19 @@ def load_raw_snapshots(
     """
     data_dir = Path(data_dir) if data_dir else RAW_DATA_DIR
 
+    if not data_dir.exists():
+        raise FileNotFoundError(
+            "Aucun dossier de données trouvé pour l'entraînement. "
+            "Lancez d'abord la collecte avec `python scripts/collect_data.py --duration 60`."
+        )
+
     parquet_files = sorted(data_dir.glob("ob_*.parquet"))
 
     if not parquet_files:
-        raise FileNotFoundError(f"No Parquet files found in {data_dir}")
+        raise FileNotFoundError(
+            "Aucun fichier Parquet trouvé dans data/raw pour l'entraînement. "
+            "Lancez d'abord la collecte avec `python scripts/collect_data.py --duration 60`."
+        )
 
     if max_files:
         parquet_files = parquet_files[:max_files]
@@ -57,10 +66,23 @@ def load_raw_snapshots(
     logger.info("loading_raw_data", n_files=len(parquet_files), dir=str(data_dir))
 
     dfs = []
+    valid_files = []
     for f in parquet_files:
-        df = pq.read_table(f).to_pandas()
+        try:
+            df = pq.read_table(f).to_pandas()
+        except Exception as exc:  # pragma: no cover - defensive path
+            logger.warning("invalid_parquet_file_skipped", path=str(f), error=str(exc))
+            continue
+
+        valid_files.append(f)
         dfs.append(df)
         logger.debug("loaded_file", path=f.name, rows=len(df))
+
+    if not dfs:
+        raise FileNotFoundError(
+            "Aucun fichier Parquet exploitable n'a été trouvé dans data/raw. "
+            "Le fichier de données est vide ou incomplet ; relancez la collecte avant l'entraînement."
+        )
 
     result = pd.concat(dfs, ignore_index=True).sort_values("timestamp").reset_index(drop=True)
 

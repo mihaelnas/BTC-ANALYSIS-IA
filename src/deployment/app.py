@@ -169,7 +169,6 @@ def build_app() -> gr.Blocks:
     """Build the Gradio application."""
     with gr.Blocks(
         title="LOB Predictor — BTCUSDT",
-        theme=gr.themes.Soft(),
     ) as app:
         gr.Markdown(
             """
@@ -279,4 +278,10 @@ def build_app() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = build_app()
-    app.launch(share=False, server_name="0.0.0.0", server_port=7860)
+    # Gradio 6 moved some parameters from Blocks(...) to launch()
+    app.launch(
+        share=False,
+        server_name="0.0.0.0",
+        server_port=7860,
+        theme=gr.themes.Soft(),
+    )

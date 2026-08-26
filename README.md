@@ -90,6 +90,31 @@ python scripts/train_model.py --optimize --n-trials 50
 python scripts/train_model.py --validate-only --sample-size 10000
 ```
 
+### Options utiles
+
+- Override des fenêtres temporelles (en heures) pour la validation walk-forward :
+
+```bash
+# Exemple : réduire les fenêtres pour travailler sur peu de données
+.venv/bin/python scripts/train_model.py \
+	--train-window-hours 1 \
+	--test-window-hours 1 \
+	--step-hours 1
+```
+
+- On peut aussi passer ces valeurs via des variables d'environnement (préfixe `MODEL_`) :
+
+```bash
+MODEL_TRAIN_WINDOW_HOURS=1 MODEL_TEST_WINDOW_HOURS=1 MODEL_STEP_HOURS=1 \
+	.venv/bin/python scripts/train_model.py
+```
+
+### Comportement d'auto-adaptation
+
+Si les données disponibles couvrent une durée plus courte que les fenêtres demandées, le pipeline **réduit automatiquement** les fenêtres (train/test/step) de façon proportionnelle puis itérative jusqu'à obtenir au moins un split walk-forward valide. Cela permet d'exécuter `python scripts/train_model.py` sans erreurs même sur de petits jeux de données de développement. Si l'auto-ajustement échoue, le script lèvera une erreur expliquant la durée des données et les fenêtres essayées.
+
+Note : pour la reproduction expérimentale, préférez définir explicitement les fenêtres via les flags ou les variables d'environnement.
+
 ## 📊 Étape 3 — Évaluation
 
 ```bash
