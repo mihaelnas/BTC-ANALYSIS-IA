@@ -15,6 +15,7 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import random
 import signal
 import time
 from typing import Any
@@ -26,7 +27,7 @@ from websockets.asyncio.client import connect as ws_connect
 
 from config.settings import get_settings, BinanceSettings, CollectorSettings
 from src.data.order_book import OrderBook
-from src.data.storage import ParquetWriter
+from src.data.storage import ParquetWriter, StorageWriteError
 
 logger = structlog.get_logger(__name__)
 
@@ -61,6 +62,8 @@ class DepthCollector:
         self._reconnect_count = 0
         self._snapshots_collected = 0
         self._updates_received = 0
+        self._write_errors = 0
+        self._consecutive_write_errors = 0
         self._start_time: float = 0.0
 
         # Buffered updates (received before snapshot is ready)
@@ -80,6 +83,8 @@ class DepthCollector:
             "buffer_size": self._writer.buffer_size if self._writer else 0,
             "total_rows_written": self._writer.total_rows_written if self._writer else 0,
             "total_files": self._writer.total_files_created if self._writer else 0,
+            "write_errors": self._write_errors,
+            "consecutive_write_errors": self._consecutive_write_errors,
         }
 
     async def _initialize_book(self) -> None:
@@ -154,8 +159,16 @@ class DepthCollector:
                 self._running = False
                 break
 
-            logger.info("ws_reconnecting", delay=delay, attempt=self._reconnect_count)
-            await asyncio.sleep(delay)
+            # Add jitter so that, in a multi-instance deployment, reconnecting
+            # clients don't all hammer the Binance endpoint in lockstep.
+            jitter = random.uniform(0, delay * self._config.reconnect_jitter_ratio)
+            sleep_for = delay + jitter
+            logger.info(
+                "ws_reconnecting",
+                delay=round(sleep_for, 2),
+                attempt=self._reconnect_count,
+            )
+            await asyncio.sleep(sleep_for)
             delay = min(delay * 2, self._config.reconnect_delay_max)
 
     async def _consumer(self) -> None:
@@ -208,12 +221,38 @@ class DepthCollector:
             # Extract and store snapshot
             snapshot = self._order_book.snapshot(n_levels=self._config.n_levels)
             if snapshot is not None and self._writer is not None:
-                self._writer.add_snapshot(snapshot)
-                self._snapshots_collected += 1
+                try:
+                    self._writer.add_snapshot(snapshot)
+                except StorageWriteError as e:
+                    # Without this, an unhandled exception here would kill
+                    # the consumer task silently (asyncio.gather swallows it
+                    # via return_exceptions=True): the producer would keep
+                    # filling the queue until it saturates, and the whole
+                    # pipeline would freeze with no further log output.
+                    self._write_errors += 1
+                    self._consecutive_write_errors += 1
+                    logger.error(
+                        "snapshot_write_failed",
+                        error=str(e),
+                        consecutive_failures=self._consecutive_write_errors,
+                        total_failures=self._write_errors,
+                    )
+                    if (
+                        self._consecutive_write_errors
+                        >= self._config.max_consecutive_write_errors
+                    ):
+                        logger.critical(
+                            "max_write_errors_reached",
+                            consecutive_failures=self._consecutive_write_errors,
+                        )
+                        self._shutdown()
+                else:
+                    self._consecutive_write_errors = 0
+                    self._snapshots_collected += 1
 
-                # Periodic stats logging
-                if self._snapshots_collected % 5000 == 0:
-                    logger.info("collection_progress", **self.stats)
+                    # Periodic stats logging
+                    if self._snapshots_collected % 5000 == 0:
+                        logger.info("collection_progress", **self.stats)
 
     async def run(self, duration_seconds: float | None = None) -> None:
         """
@@ -266,8 +305,17 @@ class DepthCollector:
         finally:
             self._running = False
             if self._writer:
-                self._writer.flush()
-                logger.info("collector_stopped", **self.stats)
+                try:
+                    self._writer.flush()
+                except StorageWriteError as e:
+                    logger.critical(
+                        "final_flush_failed",
+                        error=str(e),
+                        pending_rows=self._writer.buffer_size,
+                    )
+                    raise
+                finally:
+                    logger.info("collector_stopped", **self.stats)
 
     async def _duration_guard(self, duration: float) -> None:
         """Automatically stop after the specified duration."""
