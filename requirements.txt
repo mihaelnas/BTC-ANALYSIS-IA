@@ -1,3 +1,5 @@
+# Runtime dependencies (used by collect / features / train / evaluate / drift-check / serve)
+
 # Data collection
 websockets>=13.0
 orjson>=3.10
@@ -14,11 +16,7 @@ numpy>=1.26
 # Machine learning
 scikit-learn>=1.5
 lightgbm>=4.4
-xgboost>=2.1
 optuna>=4.0
-
-# Deep learning
-torch>=2.3
 
 # Explainability
 shap>=0.45
@@ -37,10 +35,6 @@ scipy>=1.13
 pydantic>=2.8
 pydantic-settings>=2.4
 
-# Logging
+# Logging / CLI output
 structlog>=24.4
-
-# Dev
-pytest>=8.2
-pytest-asyncio>=0.24
-ruff>=0.5
+rich>=13.7
