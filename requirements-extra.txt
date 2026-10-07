@@ -1,0 +1,6 @@
+# Optional heavy dependencies, NOT needed by the main pipeline.
+# torch -> only used by src/models/deep_learning.py (not imported anywhere yet)
+# xgboost -> mentioned in docs, not imported anywhere yet
+-r requirements.txt
+torch>=2.3
+xgboost>=2.1
