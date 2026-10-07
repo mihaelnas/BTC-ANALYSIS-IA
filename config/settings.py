@@ -99,6 +99,20 @@ class CollectorSettings(BaseSettings):
         default=100,
         description="Maximum consecutive reconnection attempts before giving up",
     )
+    reconnect_jitter_ratio: float = Field(
+        default=0.1,
+        description="Random jitter added to the backoff delay, as a fraction of it",
+    )
+
+    # Storage resilience
+    max_consecutive_write_errors: int = Field(
+        default=20,
+        description=(
+            "Maximum consecutive snapshot write failures before the collector "
+            "stops itself gracefully, to avoid silently losing data forever "
+            "(e.g. disk full, permissions revoked)"
+        ),
+    )
 
     model_config = {"env_prefix": "COLLECTOR_"}
 

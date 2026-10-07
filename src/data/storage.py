@@ -22,6 +22,15 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
+class StorageWriteError(RuntimeError):
+    """
+    Raised when a batch of snapshots fails to reach disk.
+
+    Buffered rows are never discarded when this is raised — the caller
+    decides whether to retry, alert, or stop the collector.
+    """
+
+
 def build_schema(n_levels: int = 20) -> pa.Schema:
     """
     Build the PyArrow schema for order book snapshots.
@@ -86,6 +95,7 @@ class ParquetWriter:
 
         self._total_rows_written: int = 0
         self._total_files_created: int = 0
+        self._failed_batches: int = 0
 
     @property
     def total_rows_written(self) -> int:
@@ -93,7 +103,21 @@ class ParquetWriter:
 
     @property
     def total_files_created(self) -> int:
+        """
+        Number of Parquet files opened so far.
+
+        Opening a file and writing to it are two separate steps: this
+        counter increments as soon as a file is opened, even if the write
+        that triggered the rotation then fails (the row stays buffered
+        for retry — see `_write_batch`). Use `total_rows_written` to know
+        how much data has actually reached disk.
+        """
         return self._total_files_created
+
+    @property
+    def failed_batches(self) -> int:
+        """Number of write attempts that have failed since this writer was created."""
+        return self._failed_batches
 
     @property
     def buffer_size(self) -> int:
@@ -144,26 +168,50 @@ class ParquetWriter:
             self._current_rotation_key = None
 
     def _write_batch(self) -> None:
-        """Write the current buffer to the Parquet file."""
+        """
+        Write the current buffer to the Parquet file.
+
+        On any failure (schema mismatch, full disk, permission error, ...),
+        the buffer is left untouched so the caller can retry later — no
+        snapshot is ever dropped silently.
+
+        Raises:
+            StorageWriteError: if building or writing the batch fails.
+        """
         if not self._buffer:
             return
 
-        # Build a RecordBatch from the buffer
-        # Transpose list-of-dicts → dict-of-lists
-        columns: dict[str, list] = {field.name: [] for field in self._schema}
-        for row in self._buffer:
-            for col_name in columns:
-                columns[col_name].append(row.get(col_name))
+        try:
+            # Build a RecordBatch from the buffer
+            # Transpose list-of-dicts → dict-of-lists
+            columns: dict[str, list] = {field.name: [] for field in self._schema}
+            for row in self._buffer:
+                for col_name in columns:
+                    columns[col_name].append(row.get(col_name))
 
-        arrays = [pa.array(columns[field.name], type=field.type) for field in self._schema]
-        batch = pa.RecordBatch.from_arrays(arrays, schema=self._schema)
+            arrays = [
+                pa.array(columns[field.name], type=field.type) for field in self._schema
+            ]
+            batch = pa.RecordBatch.from_arrays(arrays, schema=self._schema)
 
-        if self._current_writer is None:
-            rotation_key = self._rotation_key()
-            self._open_writer(rotation_key)
+            if self._current_writer is None:
+                rotation_key = self._rotation_key()
+                self._open_writer(rotation_key)
 
-        assert self._current_writer is not None
-        self._current_writer.write_batch(batch)
+            assert self._current_writer is not None
+            self._current_writer.write_batch(batch)
+        except Exception as e:
+            self._failed_batches += 1
+            logger.error(
+                "parquet_write_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                pending_rows=len(self._buffer),
+                failed_batches=self._failed_batches,
+                file_path=str(self._current_file_path) if self._current_file_path else None,
+            )
+            raise StorageWriteError(f"failed to write batch to disk: {e}") from e
+
         rows_written = len(self._buffer)
         self._total_rows_written += rows_written
         self._buffer.clear()
@@ -181,15 +229,31 @@ class ParquetWriter:
         Automatically flushes when:
         - Buffer reaches batch_size
         - File rotation is needed
-        """
-        # Check if we need to rotate the file
-        current_key = self._rotation_key(snapshot.get("timestamp"))
-        if self._current_rotation_key and current_key != self._current_rotation_key:
-            # Time to rotate: flush current buffer and open new file
-            self._write_batch()
-            self._open_writer(current_key)
 
-        self._buffer.append(snapshot)
+        Raises:
+            StorageWriteError: if a flush triggered by this call fails.
+            The snapshot passed in is still appended to the buffer before
+            the exception propagates, so the caller never loses it — it
+            will be included in the next successful write, possibly in a
+            file that spans slightly past its nominal rotation window.
+        """
+        current_key = self._rotation_key(snapshot.get("timestamp"))
+        needs_rotation = (
+            self._current_rotation_key is not None
+            and current_key != self._current_rotation_key
+        )
+
+        if needs_rotation:
+            try:
+                # Flush the previous window's buffer before opening a new file.
+                self._write_batch()
+            finally:
+                # The incoming snapshot must survive even if the flush above
+                # failed — losing it would be worse than a late rotation.
+                self._buffer.append(snapshot)
+            self._open_writer(current_key)
+        else:
+            self._buffer.append(snapshot)
 
         if len(self._buffer) >= self._batch_size:
             self._write_batch()
@@ -198,17 +262,34 @@ class ParquetWriter:
         """
         Force-flush any remaining buffered data to disk.
 
-        Call this on graceful shutdown to avoid data loss.
+        Call this on graceful shutdown to avoid data loss. The writer is
+        always closed and the outcome always logged, even if the write
+        itself fails — only then is the error re-raised, so the caller is
+        guaranteed to see it instead of a silent partial shutdown.
+
+        Raises:
+            StorageWriteError: if the final write fails. Any unwritten
+            rows remain in the buffer (`buffer_size`) for inspection.
         """
-        if self._buffer:
-            self._write_batch()
-        self._close_writer()
+        write_error: StorageWriteError | None = None
+        try:
+            if self._buffer:
+                self._write_batch()
+        except StorageWriteError as e:
+            write_error = e
+        finally:
+            self._close_writer()
 
         logger.info(
             "storage_flushed",
             total_rows=self._total_rows_written,
             total_files=self._total_files_created,
+            failed_batches=self._failed_batches,
+            pending_rows=len(self._buffer),
         )
+
+        if write_error is not None:
+            raise write_error
 
     def __enter__(self) -> ParquetWriter:
         return self
