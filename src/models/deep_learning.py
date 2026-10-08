@@ -11,10 +11,8 @@ Inspired by DeepLOB (Zhang et al., 2019) and recent LOB forecasting literature.
 
 from __future__ import annotations
 
-from typing import Any
 
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

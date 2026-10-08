@@ -30,7 +30,6 @@ from src.utils.cli_ui import (
     print_error,
     print_info,
     print_success,
-    print_warning,
     print_header,
     render_help,
     render_features_summary,
@@ -285,7 +284,7 @@ def main() -> None:
     p_collect.add_argument("--verbose", action="store_true", help="Verbose output")
 
     # Features command
-    p_features = sub.add_parser("features", help="Run feature pipeline")
+    sub.add_parser("features", help="Run feature pipeline")
 
     # Train command
     p_train = sub.add_parser("train", help="Train model")

@@ -26,7 +26,6 @@ from sklearn.metrics import (
     f1_score,
     log_loss,
     confusion_matrix,
-    classification_report,
 )
 
 from src.features.labels import LABEL_NAMES, Label

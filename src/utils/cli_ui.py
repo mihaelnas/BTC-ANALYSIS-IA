@@ -5,7 +5,6 @@ Provides beautiful, readable, and structured terminal output using Rich without 
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from rich import box

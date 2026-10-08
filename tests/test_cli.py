@@ -20,11 +20,6 @@ from scripts.cli import (
     cmd_drift_check,
     cmd_serve,
 )
-from src.utils.cli_ui import (
-    render_help,
-    render_features_summary,
-    render_drift_report,
-)
 import argparse
 
 
