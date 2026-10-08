@@ -1,0 +1,45 @@
+
+x-lob: &lob
+  build: .
+  image: btc-lob:dev
+  volumes:
+    - ./data:/app/data
+
+services:
+  serve:
+    <<: *lob
+    command: ["serve"]
+    ports:
+      - "7860:7860"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  collect:
+    <<: *lob
+    command: ["collect", "--duration", "${COLLECT_DURATION:-300}"]
+    profiles: ["pipeline"]
+
+  features:
+    <<: *lob
+    command: ["features"]
+    profiles: ["pipeline"]
+
+  train:
+    <<: *lob
+    command: ["train"]
+    profiles: ["pipeline"]
+
+  evaluate:
+    <<: *lob
+    command: ["evaluate", "--with-baselines", "--save-plots"]
+    profiles: ["pipeline"]
+
+  drift-check:
+    <<: *lob
+    command: ["drift-check"]
+    profiles: ["pipeline"]
