@@ -19,7 +19,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
@@ -176,7 +175,7 @@ def main() -> None:
             mom_preds = mom_bl.predict_from_returns(df["return_1"])
             mom_proba = mom_bl.predict_proba_from_returns(df["return_1"])
             result = evaluate_predictions(y.to_numpy(), mom_proba, mom_preds, fold=-1)
-            print(f"\nMomentum:")
+            print("\nMomentum:")
             print(f"  Log-loss:  {result.log_loss_val:.4f}")
             print(f"  Accuracy:  {result.accuracy:.4f}")
             print(f"  F1 Macro:  {result.f1_macro:.4f}")
@@ -187,7 +186,7 @@ def main() -> None:
             obi_preds = obi_bl.predict_from_obi(df["obi_weighted"])
             obi_proba = obi_bl.predict_proba_from_obi(df["obi_weighted"])
             result = evaluate_predictions(y.to_numpy(), obi_proba, obi_preds, fold=-1)
-            print(f"\nOBI:")
+            print("\nOBI:")
             print(f"  Log-loss:  {result.log_loss_val:.4f}")
             print(f"  Accuracy:  {result.accuracy:.4f}")
             print(f"  F1 Macro:  {result.f1_macro:.4f}")

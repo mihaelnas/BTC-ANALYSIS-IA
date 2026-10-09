@@ -67,12 +67,11 @@ def main() -> None:
     from config.settings import PROCESSED_DATA_DIR, MODELS_DIR
     from src.features.pipeline import run_feature_pipeline
     from src.models.gradient_boosting import (
-        LightGBMModel,
         optimize_lgbm_with_optuna,
         train_and_evaluate_lgbm,
     )
     from src.models.baseline import RandomBaseline, PriorBaseline
-    from src.models.evaluation import evaluate_predictions, aggregate_results
+    from src.models.evaluation import evaluate_predictions
 
     # ─── Load or compute features ──────────────────────────────────────
     features_path = PROCESSED_DATA_DIR / "features_labeled.parquet"
@@ -84,7 +83,7 @@ def main() -> None:
         else:
             logger.info("running_feature_pipeline")
             df, _ = run_feature_pipeline()
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
         print("\nAucun fichier de données pour l'entraînement n'a été trouvé.")
         print("Lance d'abord la collecte avec : python scripts/collect_data.py --duration 60")
         print("Ensuite, relance : python scripts/train_model.py")

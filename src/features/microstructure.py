@@ -96,7 +96,7 @@ def compute_multi_level_obi(
         for c in df.columns
         if c.startswith("bid_qty_")
     )
-    levels = [l for l in levels if l <= max_level]
+    levels = [lvl for lvl in levels if lvl <= max_level]
 
     result = pd.DataFrame(index=df.index)
 

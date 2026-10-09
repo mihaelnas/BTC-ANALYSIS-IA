@@ -29,12 +29,12 @@ logger = structlog.get_logger("run_pipeline")
 
 
 def run_command(cmd: list[str], description: str) -> None:
-    logger.info(f"starting_step", step=description, command=" ".join(cmd))
+    logger.info("starting_step", step=description, command=" ".join(cmd))
     try:
         subprocess.run(cmd, check=True)
-        logger.info(f"step_complete", step=description)
+        logger.info("step_complete", step=description)
     except subprocess.CalledProcessError as e:
-        logger.error(f"step_failed", step=description, exit_code=e.returncode)
+        logger.error("step_failed", step=description, exit_code=e.returncode)
         sys.exit(1)
 
 

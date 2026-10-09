@@ -1,0 +1,219 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index b525f0d..a4df95d 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -68,6 +68,14 @@ asyncio_mode = "auto"
+ [tool.ruff]
+ line-length = 100
+ target-version = "py311"
++extend-exclude = ["notebooks"]
++
++[tool.ruff.lint]
++select = ["E4", "E7", "E9", "F"]
++
++[tool.ruff.lint.per-file-ignores]
++"scripts/*" = ["E402"]
++"tests/*" = ["E402"]
+ 
+ [tool.pyright]
+ executionEnvironments = [
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+index 1d8aa75..545bcb2 100644
+--- a/requirements-dev.txt
++++ b/requirements-dev.txt
+@@ -2,4 +2,4 @@
+ -r requirements.txt
+ pytest>=8.2
+ pytest-asyncio>=0.24
+-ruff>=0.5
++ruff==0.16.10
+diff --git a/scripts/cli.py b/scripts/cli.py
+index 8d28f2f..3cc49dd 100644
+--- a/scripts/cli.py
++++ b/scripts/cli.py
+@@ -30,7 +30,6 @@ from src.utils.cli_ui import (
+     print_error,
+     print_info,
+     print_success,
+-    print_warning,
+     print_header,
+     render_help,
+     render_features_summary,
+@@ -285,7 +284,7 @@ def main() -> None:
+     p_collect.add_argument("--verbose", action="store_true", help="Verbose output")
+ 
+     # Features command
+-    p_features = sub.add_parser("features", help="Run feature pipeline")
++    sub.add_parser("features", help="Run feature pipeline")
+ 
+     # Train command
+     p_train = sub.add_parser("train", help="Train model")
+diff --git a/scripts/evaluate_model.py b/scripts/evaluate_model.py
+index bc483fd..9964709 100644
+--- a/scripts/evaluate_model.py
++++ b/scripts/evaluate_model.py
+@@ -19,7 +19,6 @@ Usage:
+ from __future__ import annotations
+ 
+ import argparse
+-import re
+ import sys
+ from pathlib import Path
+ 
+@@ -176,7 +175,7 @@ def main() -> None:
+             mom_preds = mom_bl.predict_from_returns(df["return_1"])
+             mom_proba = mom_bl.predict_proba_from_returns(df["return_1"])
+             result = evaluate_predictions(y.to_numpy(), mom_proba, mom_preds, fold=-1)
+-            print(f"\nMomentum:")
++            print("\nMomentum:")
+             print(f"  Log-loss:  {result.log_loss_val:.4f}")
+             print(f"  Accuracy:  {result.accuracy:.4f}")
+             print(f"  F1 Macro:  {result.f1_macro:.4f}")
+@@ -187,7 +186,7 @@ def main() -> None:
+             obi_preds = obi_bl.predict_from_obi(df["obi_weighted"])
+             obi_proba = obi_bl.predict_proba_from_obi(df["obi_weighted"])
+             result = evaluate_predictions(y.to_numpy(), obi_proba, obi_preds, fold=-1)
+-            print(f"\nOBI:")
++            print("\nOBI:")
+             print(f"  Log-loss:  {result.log_loss_val:.4f}")
+             print(f"  Accuracy:  {result.accuracy:.4f}")
+             print(f"  F1 Macro:  {result.f1_macro:.4f}")
+diff --git a/scripts/run_pipeline.py b/scripts/run_pipeline.py
+index ae83721..24e481b 100755
+--- a/scripts/run_pipeline.py
++++ b/scripts/run_pipeline.py
+@@ -29,12 +29,12 @@ logger = structlog.get_logger("run_pipeline")
+ 
+ 
+ def run_command(cmd: list[str], description: str) -> None:
+-    logger.info(f"starting_step", step=description, command=" ".join(cmd))
++    logger.info("starting_step", step=description, command=" ".join(cmd))
+     try:
+         subprocess.run(cmd, check=True)
+-        logger.info(f"step_complete", step=description)
++        logger.info("step_complete", step=description)
+     except subprocess.CalledProcessError as e:
+-        logger.error(f"step_failed", step=description, exit_code=e.returncode)
++        logger.error("step_failed", step=description, exit_code=e.returncode)
+         sys.exit(1)
+ 
+ 
+diff --git a/scripts/train_model.py b/scripts/train_model.py
+index bcbb722..fe4f374 100644
+--- a/scripts/train_model.py
++++ b/scripts/train_model.py
+@@ -67,12 +67,11 @@ def main() -> None:
+     from config.settings import PROCESSED_DATA_DIR, MODELS_DIR
+     from src.features.pipeline import run_feature_pipeline
+     from src.models.gradient_boosting import (
+-        LightGBMModel,
+         optimize_lgbm_with_optuna,
+         train_and_evaluate_lgbm,
+     )
+     from src.models.baseline import RandomBaseline, PriorBaseline
+-    from src.models.evaluation import evaluate_predictions, aggregate_results
++    from src.models.evaluation import evaluate_predictions
+ 
+     # ─── Load or compute features ──────────────────────────────────────
+     features_path = PROCESSED_DATA_DIR / "features_labeled.parquet"
+@@ -84,7 +83,7 @@ def main() -> None:
+         else:
+             logger.info("running_feature_pipeline")
+             df, _ = run_feature_pipeline()
+-    except FileNotFoundError as exc:
++    except FileNotFoundError:
+         print("\nAucun fichier de données pour l'entraînement n'a été trouvé.")
+         print("Lance d'abord la collecte avec : python scripts/collect_data.py --duration 60")
+         print("Ensuite, relance : python scripts/train_model.py")
+diff --git a/src/features/labels.py b/src/features/labels.py
+index cf90405..544c13e 100644
+--- a/src/features/labels.py
++++ b/src/features/labels.py
+@@ -14,7 +14,6 @@ from __future__ import annotations
+ 
+ from enum import IntEnum
+ 
+-import numpy as np
+ import pandas as pd
+ import structlog
+ 
+diff --git a/src/features/microstructure.py b/src/features/microstructure.py
+index e087e5e..6c144cc 100644
+--- a/src/features/microstructure.py
++++ b/src/features/microstructure.py
+@@ -96,7 +96,7 @@ def compute_multi_level_obi(
+         for c in df.columns
+         if c.startswith("bid_qty_")
+     )
+-    levels = [l for l in levels if l <= max_level]
++    levels = [lvl for lvl in levels if lvl <= max_level]
+ 
+     result = pd.DataFrame(index=df.index)
+ 
+diff --git a/src/models/deep_learning.py b/src/models/deep_learning.py
+index e97621d..992de79 100644
+--- a/src/models/deep_learning.py
++++ b/src/models/deep_learning.py
+@@ -11,10 +11,8 @@ Inspired by DeepLOB (Zhang et al., 2019) and recent LOB forecasting literature.
+ 
+ from __future__ import annotations
+ 
+-from typing import Any
+ 
+ import numpy as np
+-import pandas as pd
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+diff --git a/src/models/evaluation.py b/src/models/evaluation.py
+index 50b8794..8eaf56a 100644
+--- a/src/models/evaluation.py
++++ b/src/models/evaluation.py
+@@ -26,7 +26,6 @@ from sklearn.metrics import (
+     f1_score,
+     log_loss,
+     confusion_matrix,
+-    classification_report,
+ )
+ 
+ from src.features.labels import LABEL_NAMES, Label
+diff --git a/src/utils/cli_ui.py b/src/utils/cli_ui.py
+index e6ab5a3..3aeea14 100644
+--- a/src/utils/cli_ui.py
++++ b/src/utils/cli_ui.py
+@@ -5,7 +5,6 @@ Provides beautiful, readable, and structured terminal output using Rich without
+ 
+ from __future__ import annotations
+ 
+-from pathlib import Path
+ from typing import Any
+ 
+ from rich import box
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 79b39c3..fea907d 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -20,11 +20,6 @@ from scripts.cli import (
+     cmd_drift_check,
+     cmd_serve,
+ )
+-from src.utils.cli_ui import (
+-    render_help,
+-    render_features_summary,
+-    render_drift_report,
+-)
+ import argparse
+ 
+ 
+diff --git a/tests/test_models.py b/tests/test_models.py
+index d4f525b..fe46209 100644
+--- a/tests/test_models.py
++++ b/tests/test_models.py
+@@ -9,7 +9,6 @@ Covers:
+ 
+ from __future__ import annotations
+ 
+-import tempfile
+ from pathlib import Path
+ 
+ import numpy as np
