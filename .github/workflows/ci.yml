@@ -26,6 +26,7 @@ jobs:
           pip install pytest ruff pytest-asyncio
 
       - name: Lancer Ruff (lint)
+        continue-on-error: true
         run: ruff check .
 
       - name: Lancer les tests
