@@ -185,8 +185,8 @@ def walk_forward_split(
     test_window_sec = test_window_hours * 3600
     step_sec = step_hours * 3600
 
-    t_min = timestamps[0]
-    t_max = timestamps[-1]
+    t_min = np.min(timestamps)
+    t_max = np.max(timestamps)
 
     splits = []
     t_start = t_min
