@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Model training script.
@@ -52,19 +53,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=None)
     parser.add_argument("--n-estimators", type=int, default=None)
     parser.add_argument("--max-depth", type=int, default=None)
-    parser.add_argument("--train-window-hours", type=float, default=None,
-                        help="Training window size in hours (overrides settings)")
-    parser.add_argument("--test-window-hours", type=float, default=None,
-                        help="Test window size in hours (overrides settings)")
-    parser.add_argument("--step-hours", type=float, default=None,
-                        help="Step size in hours for walk-forward (overrides settings)")
+    parser.add_argument(
+        "--train-window-hours",
+        type=float,
+        default=None,
+        help="Training window size in hours (overrides settings)",
+    )
+    parser.add_argument(
+        "--test-window-hours",
+        type=float,
+        default=None,
+        help="Test window size in hours (overrides settings)",
+    )
+    parser.add_argument(
+        "--step-hours",
+        type=float,
+        default=None,
+        help="Step size in hours for walk-forward (overrides settings)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
 
-    from config.settings import PROCESSED_DATA_DIR, MODELS_DIR
+    from config.settings import PROCESSED_DATA_DIR, MODELS_DIR, get_settings
     from src.features.pipeline import run_feature_pipeline
     from src.models.gradient_boosting import (
         optimize_lgbm_with_optuna,
@@ -88,7 +101,7 @@ def main() -> None:
         print("Lance d'abord la collecte avec : python scripts/collect_data.py --duration 60")
         print("Ensuite, relance : python scripts/train_model.py")
         return
-    except Exception as exc:  # pragma: no cover - keep CLI user-friendly for bad data
+    except Exception as exc:  # pragma: no cover
         print("\nLes données de collecte sont absentes ou incomplètes pour l'entraînement.")
         print("Relancez d'abord la collecte, puis réessayez l'entraînement.")
         logger.warning("training_data_unavailable", error=str(exc))
@@ -103,75 +116,116 @@ def main() -> None:
 
     if len(df) < 10000:
         print("\nDonnées insuffisantes pour l'entraînement.")
-        print(f"Seulement {len(df)} lignes disponibles, alors qu'il faut au moins 10 000 lignes valides.")
+        print(
+            f"Seulement {len(df)} lignes disponibles, "
+            "alors qu'il faut au moins 10 000 lignes valides."
+        )
         print("Collectez plus longtemps avant de relancer le script d'entraînement.")
         return
 
     # ─── Prepare X, y ──────────────────────────────────────────────────
-    exclude_cols = {"timestamp", "mid_price", "microprice", "label", "future_return"}
+    exclude_cols = {
+        "timestamp",
+        "mid_price",
+        "microprice",
+        "label",
+        "future_return",
+    }
     feature_cols = [c for c in df.columns if c not in exclude_cols]
 
     X = df.loc[:, feature_cols]
     y = cast(pd.Series, df["label"].astype(int))
     timestamps: np.ndarray = df["timestamp"].to_numpy()
 
-    logger.info("features_prepared", n_features=len(feature_cols), features=feature_cols[:10])
+    logger.info(
+        "features_prepared",
+        n_features=len(feature_cols),
+        features=feature_cols[:10],
+    )
+
+    # ─── Determine walk-forward windows ────────────────────────────────
+    settings = get_settings()
+
+    train_w = (
+        args.train_window_hours
+        if args.train_window_hours is not None
+        else settings.model.train_window_hours
+    )
+    test_w = (
+        args.test_window_hours
+        if args.test_window_hours is not None
+        else settings.model.test_window_hours
+    )
+    step_w = (
+        args.step_hours
+        if args.step_hours is not None
+        else settings.model.step_hours
+    )
+
+    logger.info(
+        "walk_forward_windows",
+        train_window_hours=train_w,
+        test_window_hours=test_w,
+        step_hours=step_w,
+    )
 
     # ─── Baselines ─────────────────────────────────────────────────────
     logger.info("evaluating_baselines")
 
-    # Random baseline
     random_bl = RandomBaseline()
     random_proba = random_bl.predict_proba(X)
     random_result = evaluate_predictions(np.asarray(y), random_proba, fold=-1)
+
     logger.info(
         "baseline_random",
         log_loss=round(random_result.log_loss_val, 4),
         accuracy=round(random_result.accuracy, 4),
     )
 
-    # Prior baseline
     prior_bl = PriorBaseline().fit(y)
     prior_proba = prior_bl.predict_proba(X)
     prior_result = evaluate_predictions(np.asarray(y), prior_proba, fold=-1)
+
     logger.info(
         "baseline_prior",
         log_loss=round(prior_result.log_loss_val, 4),
         accuracy=round(prior_result.accuracy, 4),
     )
 
-    # ─── HP Optimization ──────────────────────────────────────────────
+    # ─── HP Optimization ───────────────────────────────────────────────
     best_params = {}
 
     if args.optimize:
         logger.info("starting_optimization", n_trials=args.n_trials)
+
         best_params = optimize_lgbm_with_optuna(
-            X, y, timestamps,
+            X,
+            y,
+            timestamps,
             n_trials=args.n_trials,
+            train_window_hours=train_w,
+            test_window_hours=test_w,
         )
+
         logger.info("optimization_complete", params=best_params)
 
-    # Override with CLI params
-    if args.learning_rate:
+    # ─── Override with CLI params ──────────────────────────────────────
+    if args.learning_rate is not None:
         best_params["learning_rate"] = args.learning_rate
-    if args.n_estimators:
+
+    if args.n_estimators is not None:
         best_params["n_estimators"] = args.n_estimators
-    if args.max_depth:
+
+    if args.max_depth is not None:
         best_params["max_depth"] = args.max_depth
 
     # ─── Train + Evaluate ──────────────────────────────────────────────
     logger.info("training_lgbm", params=best_params or "defaults")
 
-    # Determine train/test/step windows (CLI args take precedence, then env/settings)
-    from config.settings import get_settings
-    settings = get_settings()
-
-    train_w = args.train_window_hours if args.train_window_hours is not None else settings.model.train_window_hours
-    test_w = args.test_window_hours if args.test_window_hours is not None else settings.model.test_window_hours
-    step_w = args.step_hours if args.step_hours is not None else settings.model.step_hours
-
     final_model, results, summary = train_and_evaluate_lgbm(
-        X, y, timestamps,
+        X,
+        y,
+        timestamps,
         params=best_params if best_params else None,
         train_window_hours=train_w,
         test_window_hours=test_w,
@@ -184,8 +238,9 @@ def main() -> None:
     print(summary.to_string(index=False))
     print("=" * 80)
 
-    # Feature importance
+    # ─── Feature importance ────────────────────────────────────────────
     importance = final_model.feature_importance()
+
     print("\nTOP 15 FEATURES (by gain):")
     print(importance.head(15).to_string(index=False))
 
@@ -194,12 +249,10 @@ def main() -> None:
         model_path = final_model.save()
         logger.info("model_saved", path=str(model_path))
 
-        # Save evaluation summary
         summary_path = MODELS_DIR / "evaluation_summary.csv"
         summary.to_csv(summary_path, index=False)
         logger.info("summary_saved", path=str(summary_path))
 
-        # Save feature importance
         importance_path = MODELS_DIR / "feature_importance.csv"
         importance.to_csv(importance_path, index=False)
         logger.info("importance_saved", path=str(importance_path))

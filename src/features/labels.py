@@ -88,8 +88,12 @@ def classify_adaptive_threshold(
     """
     valid_returns = future_return.dropna()
     abs_returns = valid_returns.abs()
+    abs_returns = abs_returns[abs_returns > 0]
 
     # Find the threshold at the target_neutral_ratio quantile
+    if abs_returns.empty:
+        raise ValueError("Cannot calibrate adaptive threshold: no positive returns.")
+
     threshold = abs_returns.quantile(target_neutral_ratio)
 
     logger.info(
